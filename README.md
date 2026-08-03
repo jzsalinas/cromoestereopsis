@@ -53,8 +53,8 @@ El objetivo principal de este laboratorio fue:
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/tu-usuario/cromoestereopsis-temporal.git
-cd cromoestereopsis-temporal
+git clone https://github.com/jzsalinas/cromoestereopsis.git
+cd cromoestereopsis
 
 # 2. Crear y activar entorno virtual
 python3 -m venv .venv
