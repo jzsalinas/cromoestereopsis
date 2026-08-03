@@ -43,6 +43,15 @@ Utilizando el **Método de los Límites Ascendente-Descendente** con lentes de p
 
 ---
 
+## 💡 Implicancias y Aplicaciones Industriales
+
+Para conocer un desglose detallado sobre cómo este descubrimiento sobre frecuencias espaciales cromáticas se aplica a **filtros de accesibilidad UX/UI, pre-compensación en visores VR/AR, compresión perceptual de video y motores de pseudo-3D en videojuegos**, consulta la documentación dedicada:
+
+📄 **[Ver Documentación Completa de Aplicaciones y Utilidades](docs/aplicaciones_y_utilidades.md)**
+
+---
+
+
 
 ## 📐 Protocolo Psicofísico: Medición del Umbral de Frecuencia Espacial Crítica ($\sigma$)
 
