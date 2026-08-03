@@ -116,7 +116,12 @@ def main():
     cv2.createTrackbar("Plano XY Azul: Eje X (B%)", win_ctrl, 100, 100, nothing)
     cv2.createTrackbar("Plano XY Azul: Eje Y (R%)", win_ctrl, 0, 100, nothing)
 
-    # NUEVO: Selector de Imagen Fuente (0 = Webp Punteado, 1 = Sólido Plano)
+    # NUEVO: Filtro Pasabajo de Frecuencia Espacial (Gaussian Blur Sigma x10: 0.0 a 10.0)
+    cv2.createTrackbar("Filtro Espacial (Sigma x10)", win_ctrl, 0, 100, nothing)
+    # NUEVO: Selector de Canal a Filtrar (0 = Ambos, 1 = Solo Rojo, 2 = Solo Azul)
+    cv2.createTrackbar("Filtro Canal: 0=Ambos 1=Rojo 2=Azul", win_ctrl, 1, 2, nothing)
+
+    # Selector de Imagen Fuente (0 = Webp Punteado, 1 = Sólido Plano)
     cv2.createTrackbar("Fuente: 0=Punteado 1=Solido", win_ctrl, 0, 1, nothing)
 
     # Trackbar de Modo: 0 = Parpadeo a Negro (Flicker), 1 = Sample & Hold (Ralentización)
@@ -131,14 +136,20 @@ def main():
     real_fps = DEFAULT_BASE_FPS
     frame_times = []
 
+    # Variables para el Método Psicofísico de los Límites (Staircase Protocol)
+    sigma_muerte = None
+    sigma_vida = None
+
     print("\n" + "="*65)
     print(" LABORATORIO ÓPTICO DE CROMOESTEREOPSIS TEMPORAL (144+ Hz)")
-    print(" Experimento de Comparación: Patrón Punteado vs. Relleno Sólido")
+    print(" Protocolo Psicofísico & Filtro de Frecuencia Espacial Selector")
     print("="*65)
     print(" [+] Controles activos:")
-    print("     - Fuente: 0 (cromoestereopsis.webp Punteado) | 1 (image_1.png Sólido Plano)")
-    print("     - Plano XY Azul: Ajusta (X, Y) para mezclar longitudes de onda.")
-    print("     - Base Refresco: 144 Hz | FPS Rojo / Azul per-channel.")
+    print("     - Filtro Espacial (Sigma x10): Ajusta el desenfoque pasabajo (0.0 a 10.0).")
+    print("     - Filtro Canal: 0 (Ambos) | 1 (Solo Banda Roja) | 2 (Solo Banda Azul).")
+    print("     - Tecla 'm': Registrar σ_muerte (Barrido ascendente: Colapso del 3D).")
+    print("     - Tecla 'v': Registrar σ_vida (Barrido descendente: Recuperación del 3D).")
+    print("     - Fuente: 0 (Punteado Webp) | 1 (Sólido Plano Image_1).")
     print("     - Tecla ESC o 'q': Salir.")
     print("="*65 + "\n")
 
@@ -150,11 +161,32 @@ def main():
         src_sel = cv2.getTrackbarPos("Fuente: 0=Punteado 1=Solido", win_ctrl)
         active_source = img_solid if src_sel == 1 else img_webp
 
-        # Extraer canales de la imagen seleccionada
+        # Extraer canales individuales de la imagen fuente
         b_source, _, r_source = cv2.split(active_source)
         g_blank = np.zeros((h, w), dtype=np.uint8)
 
-        # 2. Leer controles
+        # 2. Leer Filtro Pasabajo de Frecuencia Espacial y Target de Canal
+        sigma_val = cv2.getTrackbarPos("Filtro Espacial (Sigma x10)", win_ctrl) / 10.0
+        filter_target = cv2.getTrackbarPos("Filtro Canal: 0=Ambos 1=Rojo 2=Azul", win_ctrl)
+        
+        if sigma_val > 0.0:
+            k_size = int(2 * np.ceil(3 * sigma_val) + 1)
+            k_size = max(3, k_size if k_size % 2 == 1 else k_size + 1)
+            
+            if filter_target == 0:  # Filtrar Ambos Canales
+                r_source = cv2.GaussianBlur(r_source, (k_size, k_size), sigma_val)
+                b_source = cv2.GaussianBlur(b_source, (k_size, k_size), sigma_val)
+            elif filter_target == 1:  # Filtrar Solo Canal Rojo
+                r_source = cv2.GaussianBlur(r_source, (k_size, k_size), sigma_val)
+            elif filter_target == 2:  # Filtrar Solo Canal Azul
+                b_source = cv2.GaussianBlur(b_source, (k_size, k_size), sigma_val)
+                
+            fc_cutoff = 1.0 / (2 * np.pi * sigma_val)
+        else:
+            fc_cutoff = float('inf')
+
+
+        # 3. Leer controles de tiempo e intensidad
         base_fps = max(1, min(MAX_SAFE_FPS, cv2.getTrackbarPos("Base Refresco (Hz)", win_ctrl)))
         
         fps_R_raw = cv2.getTrackbarPos("FPS Rojo (Hz)", win_ctrl)
@@ -171,7 +203,7 @@ def main():
         mode = cv2.getTrackbarPos("Modo: 0=Flicker 1=S&H", win_ctrl)
         motion_on = cv2.getTrackbarPos("Movimiento Dinamico", win_ctrl)
 
-        # 3. Movimiento Armónico Dinámico (si está activo)
+        # 4. Movimiento Armónico Dinámico (si está activo)
         if motion_on == 1:
             shift_x = int(20 * np.sin(frame_count * 0.05))
             shift_y = int(10 * np.cos(frame_count * 0.05))
@@ -182,14 +214,13 @@ def main():
             curr_r_base = r_source
             curr_b_base = b_source
 
-        # 4. Transformación Cromática 2D en el Plano XY para la Región Azul
+        # 5. Transformación Cromática 2D en el Plano XY para la Región Azul
         curr_b = cv2.convertScaleAbs(curr_b_base, alpha=coord_X)
         added_r = cv2.convertScaleAbs(curr_b_base, alpha=coord_Y)
         curr_r = cv2.add(curr_r_base, added_r)
 
-        # 5. LÓGICA TEMPORAL PER-CANAL
+        # 6. LÓGICA TEMPORAL PER-CANAL
         if mode == 0:
-            # MODO 0: PARPADEO A NEGRO (Square-Wave Flicker)
             period_R = base_fps / fps_R
             phase_R = (frame_count % period_R) / period_R
             out_R = curr_r if (phase_R < 0.5 or fps_R == base_fps) else g_blank
@@ -199,7 +230,6 @@ def main():
             out_B = curr_b if (phase_B < 0.5 or fps_B == base_fps) else g_blank
 
         else:
-            # MODO 1: SAMPLE & HOLD (Congelamiento de trama)
             interval_R = max(1, int(round(base_fps / fps_R)))
             if frame_count % interval_R == 0:
                 buf_R = curr_r.copy()
@@ -210,32 +240,50 @@ def main():
                 buf_B = curr_b.copy()
             out_B = buf_B
 
-        # 6. Aplicar escala de intensidad cromática global
+        # 7. Aplicar escala de intensidad cromática global
         if gain_R < 1.0:
             out_R = cv2.convertScaleAbs(out_R, alpha=gain_R)
         if gain_B < 1.0:
             out_B = cv2.convertScaleAbs(out_B, alpha=gain_B)
 
-        # 7. Recombinación BGR
+        # 8. Recombinación BGR
         composite = cv2.merge([out_B, g_blank, out_R])
 
-        # 8. HUD de Telemetría
+        # 9. HUD de Telemetría Psicofísica & Estado del Experimento
         modo_str = "Flicker a Negro" if mode == 0 else "Sample & Hold"
         src_str = "Punteado (Webp)" if src_sel == 0 else "Solido Plano (Image_1)"
         
-        cv2.putText(composite, f"Fuente: {src_str} | Modo: {modo_str}", 
-                    (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
-        cv2.putText(composite, f"Target: {base_fps} Hz | Real: {real_fps:.1f} FPS | XY Azul: ({int(coord_X*100)}%, {int(coord_Y*100)}%)", 
-                    (20, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
+        cv2.putText(composite, f"Fuente: {src_str} | Modo: {modo_str} | Target: {base_fps} Hz ({real_fps:.1f} FPS)", 
+                    (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        
+        target_name = "Ambos" if filter_target == 0 else ("Rojo" if filter_target == 1 else "Azul")
+        fc_str = "Infinito" if fc_cutoff == float('inf') else f"{fc_cutoff:.3f} cyc/px"
+        cv2.putText(composite, f"Filtro Espacial ({target_name}): Sigma = {sigma_val:.1f} (fc_corte: {fc_str})", 
+                    (20, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+
+        # Mostrar Telemetría del Método de los Límites (Staircase Protocol)
+        if sigma_muerte is not None or sigma_vida is not None:
+            m_str = f"{sigma_muerte:.1f}" if sigma_muerte is not None else "--"
+            v_str = f"{sigma_vida:.1f}" if sigma_vida is not None else "--"
+            if sigma_muerte is not None and sigma_vida is not None:
+                u_str = f"{(sigma_muerte + sigma_vida)/2.0:.2f}"
+            else:
+                u_str = "Pendiente"
+            cv2.putText(composite, f"Staircase: Sigma Muerte={m_str} | Sigma Vida={v_str} -> Umbral={u_str}", 
+                        (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        else:
+            cv2.putText(composite, "Staircase: Presiona 'm' (Muerte 3D) o 'v' (Vida 3D) para medir umbral", 
+                        (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
 
         # Advertencia de seguridad en pantalla si hay alta frecuencia de destello fotosensible (10-30 Hz)
         if mode == 0 and ((10 <= fps_R <= 30 and fps_R != base_fps) or (10 <= fps_B <= 30 and fps_B != base_fps)):
             cv2.putText(composite, "[!] ALERTA DE FOTOSENSIBILIDAD (Flicker 10-30 Hz)", 
-                        (20, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                        (20, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
 
         cv2.imshow(win_main, composite)
 
-        # 9. Regulación de tiempo con precisión de nano-segundos
+        # 10. Regulación de tiempo e interacción por teclado
         target_frame_time = 1.0 / base_fps
         elapsed = time.perf_counter() - loop_start
         sleep_time = target_frame_time - elapsed
@@ -246,6 +294,15 @@ def main():
         key = cv2.waitKey(1) & 0xFF
         if key == 27 or key == ord('q'):
             break
+        elif key == ord('m'):
+            sigma_muerte = sigma_val
+            print(f"[>] REGISTRADO: Sigma Muerte (Colapso 3D) = {sigma_muerte:.1f}")
+        elif key == ord('v'):
+            sigma_vida = sigma_val
+            print(f"[>] REGISTRADO: Sigma Vida (Recuperación 3D) = {sigma_vida:.1f}")
+            if sigma_muerte is not None:
+                umbral = (sigma_muerte + sigma_vida) / 2.0
+                print(f"[★] UMBRAL CRÍTICO PSICOFÍSICO CALCULADO: Sigma Umbral = {umbral:.2f}")
 
         now = time.perf_counter()
         dt = now - last_time
@@ -260,6 +317,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 

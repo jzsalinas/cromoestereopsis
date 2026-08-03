@@ -27,7 +27,41 @@ El objetivo principal de este laboratorio fue:
 
 * **Efecto de la Textura (Patrón Punteado vs. Sólido):** Al evaluar la imagen clásica (`cromoestereopsis.webp`), que posee un diseño punteado de alta frecuencia espacial, la ilusión de profundidad 3D es intensa a través de lentes +2.0 D. Sin embargo, al conmutar a la imagen sólida plana ([`image_1.png`](image_1.png)) con **geometría idéntica y colores 100% uniformes sin ruido**, la ilusión 3D desaparece o se atenúa drásticamente.
 * **Mecanismo Psicofísico:** Los micro-bordes de alto contraste del punteado estocástico actúan como disparadores primarios de la acomodación ocular y detectores de disparidad binocular en la corteza visual ($V1$). La textura en sí genera las claves de profundidad que la refracción del color amplifica.
-* **Transformación 2D $XY$:** Al transformar la zona azul para emitir únicamente luz roja $(X=0\%, Y=100\%)$, la textura del punteado original mantiene una ligera disparidad residual de profundidad, mientras que en la imagen sólida plana la profundidad se iguala por completo.
+* **Asimetría del Canal Azul vs. Rojo:** Contrario a la intuición inicial, el colapso del efecto 3D ocurre de forma determinante al filtrar la **banda Azul** (Canal 2). Debido a que las longitudes de onda cortas ($\sim 450\text{ nm}$) sufren la mayor refracción y dispersión bajo lentes de +2.0 D, al suavizar el punteado del canal azul, la corteza visual pierde el ancla espacial crítica de disparidad binocular.
+
+---
+
+### 📊 Resultados Empíricos Medidos (Protocolo *Staircase*)
+
+Utilizando el **Método de los Límites Ascendente-Descendente** con lentes de presbicia +2.0 D sobre la banda Azul, se obtuvieron los siguientes valores cuantitativos de umbral:
+
+| Parámetro Medido | Valor $\sigma$ | Frecuencia de Corte $f_c$ | Estado Perceptivo |
+| :--- | :---: | :---: | :--- |
+| **$\sigma_{\text{muerte}}$ (Barrido Ascendente)** | **9.1** | $\sim 0.0175\text{ cyc/px}$ | Colapso total del plano 3D a 2D |
+| **$\sigma_{\text{vida}}$ (Barrido Descendente)** | **6.9** | $\sim 0.0231\text{ cyc/px}$ | Reenganche y recuperación de la profundidad 3D |
+| **$\sigma_{\text{umbral}}$ (Umbral Crítico)** | **8.00** | **$\sim 0.0199\text{ cyc/px}$** | **Umbral Absoluto Psicofísico de Cromoestereopsis** |
+
+---
+
+
+## 📐 Protocolo Psicofísico: Medición del Umbral de Frecuencia Espacial Crítica ($\sigma$)
+
+Para cuantificar exactamente en qué punto la corteza visual $V1$ deja de detectar la disparidad binocular (colapso del 3D), la aplicación integra un **filtro pasabajo gaussiano (*Gaussian Blur*)** y el **Método Psicofísico de los Límites (Staircase Protocol)**.
+
+### 1. Filtrado Pasabajo de Frecuencia Espacial
+La "textura" o punteado corresponde a altas frecuencias espaciales. Al aplicar un núcleo gaussiano de parámetro $\sigma$ (Sigma), filtramos progresivamente estas frecuencias según la frecuencia de corte:
+
+$$f_c \approx \frac{1}{2\pi \sigma} \quad (\text{ciclos por píxel})$$
+
+* **$\sigma = 0.0$:** Frecuencias altas intactas $\rightarrow$ Textura punteada nítida $\rightarrow$ **Efecto 3D Máximo**.
+* **$\sigma > 0$ alto:** Frecuencias altas eliminadas $\rightarrow$ Imagen suavizada $\rightarrow$ **Colapso a 2D**.
+
+### 2. Protocolo Ascendente-Descendente (Teclas Interactivas)
+Debido a la histeresis perceptiva del cerebro, se utiliza el promedio entre el colapso y la recuperación:
+1. **Barrido Ascendente ($\sigma = 0 \rightarrow \sigma_{\text{muerte}}$):** Aumenta el slider `Filtro Espacial (Sigma σ)` hasta que el plano 3D colapse. Presiona **`m`** para registrar $\sigma_{\text{muerte}}$.
+2. **Barrido Descendente ($\sigma = 10.0 \rightarrow \sigma_{\text{vida}}$):** Reduce el desenfoque hasta que el 3D "enganche" de nuevo. Presiona **`v`** para registrar $\sigma_{\text{vida}}$.
+3. **Umbral Crítico Real ($\sigma_{\text{umbral}}$):** La aplicación calcula automáticamente:
+   $$\sigma_{\text{umbral}} = \frac{\sigma_{\text{muerte}} + \sigma_{\text{vida}}}{2}$$
 
 ---
 
@@ -36,9 +70,12 @@ El objetivo principal de este laboratorio fue:
 * **Control Temporal por Canal (144+ Hz):** Ajuste independiente de la frecuencia de parpadeo (Hz) para el canal Rojo y Azul a tasas de refresco de hasta 240 Hz.
 * **Fórmula de Plano 2D $XY$ Cromático:** Modulación vectorial de la región azul:
   $$\text{Color}_{\text{Zona Azul}} = X \cdot \text{Azul} + Y \cdot \text{Rojo}$$
+* **Filtro Pasabajo de Frecuencia Espacial (Sigma $\sigma$):** Ajuste continuo de la frecuencia de corte espacial $f_c \approx \frac{1}{2\pi\sigma}$.
+* **Método de los Límites Psicofísico:** Registro interactivo de $\sigma_{\text{muerte}}$ (tecla `m`) y $\sigma_{\text{vida}}$ (tecla `v`) en el HUD de telemetría.
 * **Conmutación de Patrón en Tiempo Real:** Intercambio directo entre el patrón punteado estocástico (`0`) y el patrón de relleno sólido plano (`1`).
 * **Telemetría & Seguridad de Hardware:** Medidor de FPS reales rendidos con resolución de nanosegundos (`time.perf_counter`) y regulación de CPU para evitar sobrecalentamiento de hardware o desincronización de reloj.
 * **Alerta de Fotosensibilidad:** Notificación automática en pantalla al ingresar en el rango de parpadeo estroboscópico sensible (10–30 Hz).
+
 
 ---
 
@@ -88,11 +125,18 @@ python3 chromostereopsis_lab.py
 | **Intensidad Azul (%)** | 0 – 100 % | Ajuste de ganancia de brillo del canal Azul. |
 | **Plano XY Azul: Eje X** | 0 – 100 % | Componente Azul ($X$) asignado a la zona azul. |
 | **Plano XY Azul: Eje Y** | 0 – 100 % | Componente Rojo ($Y$) mezclado en la zona azul. |
+| **Filtro Espacial (Sigma x10)** | 0.0 – 10.0 | Ajusta el filtro pasabajo ($f_c \approx \frac{1}{2\pi\sigma}$) para suavizar la textura. |
+| **Filtro Canal: 0=Ambos 1=Rojo 2=Azul** | 0, 1 o 2 | Selecciona el objetivo del desenfoque pasabajo (`0`: Ambos \| `1`: Solo Rojo \| `2`: Solo Azul). |
 | **Fuente: 0=Punteado 1=Solido** | 0 o 1 | Alterna entre `cromoestereopsis.webp` (0) e `image_1.png` (1). |
 | **Modo: 0=Flicker 1=S&H** | 0 o 1 | `0`: Parpadeo a negro (*Square wave*) \| `1`: Ralentización (*Sample & Hold*). |
 | **Movimiento Dinamico** | 0 o 1 | `1`: Activa oscilación armónica para observar disparidad en movimiento. |
 
-* **Teclas de Control:** Presiona `ESC` o `q` en la ventana principal para salir.
+
+* **Teclas Interactivas de Control & Psicofísica:**
+  * **`m`**: Registrar $\sigma_{\text{muerte}}$ (Barrido Ascendente: Colapso de 3D a 2D).
+  * **`v`**: Registrar $\sigma_{\text{vida}}$ (Barrido Descendente: Recuperación de 2D a 3D $\rightarrow$ calcula $\sigma_{\text{umbral}}$).
+  * **`ESC` / `q`**: Salir de la aplicación.
+
 
 ---
 
